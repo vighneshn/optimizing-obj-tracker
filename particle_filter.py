@@ -54,9 +54,6 @@ class part_filt:
 		eta = 0.0
 
 		#Store the mean of the ten best particles
-		#nmlz = np.sum([self.xt_1[i].wt for i in range(self.num)])
-		#self.mean_best_ten = (np.sum([self.xt_1[i].u*self.xt_1[i].wt for i in range(self.num)])/nmlz, 
-		#					  np.sum([self.xt_1[i].v*self.xt_1[i].wt for i in range(self.num)])/nmlz)
 		nmlz = np.sum([self.xt_1[k].wt for k in range(10)])
 		self.mean_best_ten = (np.sum([self.xt_1[k].u*self.xt_1[k].wt for k in range(10)])/nmlz, 
 							  np.sum([self.xt_1[k].v*self.xt_1[k].wt for k in range(10)])/nmlz)
@@ -79,43 +76,28 @@ class part_filt:
                 u_v = [[[self.xt_1[i].u+delu(j)[0], self.xt_1[i].v+delv(j)[0]] for j in range(p[i])] if sum(p[:i])<=n_vel else [[self.xt_1[i].u+delu2(j)[0], self.xt_1[i].v+delv2(j)[0]] for j in range(n_vel - sum(p) + p[i])] for i in range(n_vel)]
                 u_v = np.asarray(list(chain.from_iterable(u_v)))
 
-                #weights = self.pzt(frame, u_v[:,0], u_v[:,1])
-                #tot_p_nvel = [particle(u_v[i][0],u_v[i][1],weights[i]) for i in range(min(sum(p),n_vel))]
-
-                remaining = []
                 if sum(p) < n_vel:
                     delu = np.random.normal(u_t_plus_1 - self.mean_best_ten[0], self.sig_d, n_vel - sum(p))
                     delv = np.random.normal(v_t_plus_1 - self.mean_best_ten[1], self.sig_d, n_vel - sum(p))
                     u_v = np.concatenate((u_v,np.asarray([[self.xt_1[i].u+delu[i], self.xt_1[i].v+delv[i]] for i in range(n_vel - sum(p))])), axis=0)
-                    #weights = self.pzt(frame, u_v[:,0], u_v[:,1])
-                    #remaining = [particle(u_v[i][0],u_v[i][1], weights[i]) for i in range(n_vel - sum(p))]
 
                 ##Without velociy
                 _del = np.random.normal(0, self.sig_d, self.num - n_vel)
                 u_v = np.concatenate((u_v,np.asarray([[self.xt_1[i].u+_del[i], self.xt_1[i].v+_del[i]] for i in range(self.num - n_vel)])), axis = 0)
-                #weights = self.pzt(frame, u_v[:,0], u_v[:,1])
-                #without_vel = [particle(u_v[i][0],u_v[i][1], weights[i]) for i in range(self.num - n_vel)]
-                #self.xt = tot_p_nvel + without_vel + remaining 
-		print 'Finding weights now',time.clock() - start 
+
                 weights = self.pzt(frame, u_v[:,0], u_v[:,1])
-		print 'Found weights',time.clock() - start 
                 self.xt = [particle(u_v[i][0],u_v[i][1], weights[i]) for i in range(self.num)]
 
                 wt = sum([self.xt[i].wt for i in range(len(self.xt))])
                 for i in range(len(self.xt)):
                     self.xt[i].wt /= wt
-		print 'norm weights',time.clock() - start 
 		
 		#Merge sort, to sort particles by weight
 		self.sort_by_weight()
 		self.xt_1 = self.xt
 		self.xt = []
 				
-		
-		#self.weight_mask(frame)
-		#start = time.clock()
 		self.update_temp(frame)
-		print 'Update temp',time.clock() - start 
 		#self.disp_eig()
 		self.frames_passed = self.frames_passed + 1
 		print 'sample function time ',time.clock() - start 
@@ -125,7 +107,7 @@ class part_filt:
 		h,w = frame.shape[:2]
 		start = time.clock()
 		#Boundary Condtitions... :P
-                
+                # Need to make checks for the boundary in this method
 		#if(u<=w-self.m/2 and u >= self.m/2 and v >= self.n/2 and v <= h-self.n/2):
                 img2 = np.asarray([frame[int(round(v[i] - self.n/2.0,0)): int(round(v[i] + self.n/2.0,0)), int(round(u[i] - self.m/2.0,0)): int(round(u[i]+self.m/2.0,0))] for i in range(u.size)])
                 img2 = img2.reshape((u.size,self.n*self.m))
@@ -134,61 +116,15 @@ class part_filt:
 		print 'pzt time ', time.clock() - start
                 return weight
 
-                '''
-		#if(u.any()<=w-self.m/2 and u.any() >= self.m/2 and v.any()>= self.n/2 and v.any()<=h-self.n/2):
-		if(u<=w-self.m/2 and u >= self.m/2 and v>= self.n/2 and v<=h-self.n/2):
-			#All these if conditions to make sure we have same sized images to subtract
-                        
-			#if(self.n%2==0 and self.m%2 == 0):
-			#	img2 = frame[int(v - self.n/2): int(v + self.n/2), int(u - self.m/2): int(u+self.m/2)]
-			#elif(self.n%2==0 and self.m%2 != 0):
-			#	img2 = frame[int(v - self.n/2): int(v + self.n/2), int(u - self.m/2): int(u+self.m/2 )+ 1]
-			#elif(self.n%2!=0 and self.m%2 == 0):
-			#	img2 = frame[int(v - self.n/2): int(v + self.n/2) +1, int(u - self.m/2): int(u+self.m/2)]
-			#else:
-			#	img2 = frame[int(v - self.n/2): int(v + self.n/2) +1, int(u - self.m/2): int(u+self.m/2) + 1]
-                        
-                        img2 = frame[int(round(v - self.n/2.0,0)):int(round(v+self.n/2.0,0)), int(round(u-self.m/2.0,0)):int(round(u+self.m/2.0))]
-                        ##
-                        #img2 = frame[int(v):int(v+self.n), int(u):int(u+self.m)]
-                        ##
-			img2 = img2.flatten()
-			img2 = img2.reshape((img2.size,1))
-
-			#Real stuff happens here
-			err = self.MSE(img2) 
-			weight = np.exp(-err/(2*self.sig_mse**2))
-                        #weight = err
-			#print 'err wt', err,' ',weight
-			#print 'pzt time ', time.clock() - start
-
-			return weight
-		else:
-			return 0
-                '''
-
-
-	#Mean Squared Error
-        '''
-	def MSE(self,img2):
-		z = img2 - self.mu_data
-		p = np.dot(self.sub_s, np.dot(self.sub_s.T,z))
-		return np.sum((z-p)**2)/z.size
-        '''
         #MSE with robust error norm
         def MSE(self,img2):
                 start = time.clock()
                 z = img2 - self.mu_data
-                #This was used before#p = np.dot(self.sub_s, np.dot(self.sub_s.T,z))
-
                 #if self.frames_passed >= 1:
                 #    p = slb.dgemm(1.0, a=self.sub_s, b=slb.dgemm(1.0 ,a=self.sub_s.T, b=z))
                 #else:
                 p = np.dot(self.sub_s, np.dot(self.sub_s.T,z))
                 l = (z-p)**2
-                #print 'time mse ', time.clock()-start
-                #m = (l > ((10**2)*np.ones(l.shape))).astype(int)
-		#start = time.clock()
                 err = np.sum((l.astype(float)/(l+(38**2)*3)), axis = 0)
                 return err
 
@@ -197,46 +133,26 @@ class part_filt:
 
 		
 	def update_temp(self, frame):
-		#u = self.xt_1[0].u
-		#v = self.xt_1[0].v
                 #
 		nmlz = np.sum([self.xt_1[i].wt for i in range(10)])
 		u = np.sum([self.xt_1[i].u*self.xt_1[i].wt for i in range(10)])/nmlz 
 		v = np.sum([self.xt_1[i].v*self.xt_1[i].wt for i in range(10)])/nmlz
                 #
-                
-		if(self.n%2==0 and self.m%2 == 0):
-			img2 = frame[int(v - self.n/2): int(v + self.n/2), int(u - self.m/2): int(u+self.m/2)]
-		elif(self.n%2==0 and self.m%2 != 0):
-			img2 = frame[int(v - self.n/2): int(v + self.n/2), int(u - self.m/2): int(u+self.m/2 )+ 1]
-		elif(self.n%2!=0 and self.m%2 == 0):
-			img2 = frame[int(v - self.n/2): int(v + self.n/2) +1, int(u - self.m/2): int(u+self.m/2)]
-		else:
-			img2 = frame[int(v - self.n/2): int(v + self.n/2) +1, int(u - self.m/2): int(u+self.m/2) + 1]
-                
-                ##
-                #img2 = frame[int(v):int(v+self.n), int(u):int(u+self.m)]
-                #
-                #cv2.imshow('img2', img2)
-                ##
+                img2 =frame[int(round(v - self.n/2.0,0)): int(round(v + self.n/2.0,0)), int(round(u - self.m/2.0,0)): int(round(u+self.m/2.0,0))]
 		img2 = img2.reshape((img2.size,1))
 
 		B = img2
 		factor = (self.frames_passed*1.0/(self.frames_passed + 1 ))**0.5
 
 		B_hat = np.append( np.zeros((img2.size,1)), (img2 - self.mu_data) * factor , axis = 1)
-		
 		self.mu_data = (self.mu_data*(self.frames_passed)*self.forget_factor + img2)*1./((self.frames_passed)*self.forget_factor+1)
 
 		U_sigma = self.forget_factor*np.dot(self.sub_s, np.diag(self.sigma_svd)) #Matrix multiplication of U and Sigma
 		QR_mat = np.append(U_sigma, B_hat, axis = 1) #This is the matrix whose QR factors we want
-
 		U_B_tild, R = np.linalg.qr(QR_mat)
 		
 		U_tild, sig_tild, vh_tild = np.linalg.svd(R)
-
 		U_new = np.dot(U_B_tild, U_tild )
-
 		if(sig_tild.size > self.k):
 			self.sigma_svd = sig_tild[ 0:self.k ]
 			self.sub_s = U_new[:, 0:self.k ]
@@ -249,16 +165,11 @@ class part_filt:
 			self.sub_s = np.append(self.sub_s, U_new[:,j].reshape((self.sub_s.shape[0], 1)), axis = 1)
 			self.sigma_svd = np.append(self.sigma_svd, sig_tild[j])
 
-		
-		
-		
 	def disp_eig(self):
 		for i in xrange(self.sub_s.shape[1]):
 			sub_s = self.sub_s[:,i].reshape(self.mu_data.shape)
 			temp = sub_s #+ self.mu_data)/255.0
-			#temp = (self.sub_s[:,i])
 			disp = temp.reshape(self.n,self.m)
-			#cv2.imshow('disp2', disp)
 			disp = cv2.normalize(disp, 0, 255, cv2.NORM_MINMAX)
 			#stack = np.dstack((stack,disp))
 			cv2.imshow('disp', disp)
@@ -272,20 +183,13 @@ class part_filt:
 		It = 0
 		D = np.zeros(self.weightmask.shape)
 		#need to make It as a mn cross k matrix
-		if(self.n%2==0 and self.m%2 == 0):
-			It = frame[int(v - self.n/2): int(v + self.n/2), int(u - self.m/2): int(u+self.m/2)]
-		elif(self.n%2==0 and self.m%2 != 0):
-			It = frame[int(v - self.n/2): int(v + self.n/2), int(u - self.m/2): int(u+self.m/2 )+ 1]
-		elif(self.n%2!=0 and self.m%2 == 0):
-			It = frame[int(v - self.n/2): int(v + self.n/2) +1, int(u - self.m/2): int(u+self.m/2)]
-		else:
-			It = frame[int(v - self.n/2): int(v + self.n/2) +1, int(u - self.m/2): int(u+self.m/2) + 1]
-			It = It.flatten()
-			prod = It - np.matmul(np.matmul(self.sub_s, self.sub_s.T),It)
-			#prod = prod.flatten()
-			for i in xrange(prod.size):
-				D[i] = prod[i]*self.weightmask[i]
-				self.weightmask[i] = np.exp(-1*D[i]**2/self.sigma_wm**2)
+                It =frame[int(round(v - self.n/2.0,0)): int(round(v + self.n/2.0,0)), int(round(u - self.m/2.0,0)): int(round(u+self.m/2.0,0))]
+		It = It.flatten()
+		prod = It - np.matmul(np.matmul(self.sub_s, self.sub_s.T),It)
+		#prod = prod.flatten()
+		for i in xrange(prod.size):
+			D[i] = prod[i]*self.weightmask[i]
+			self.weightmask[i] = np.exp(-1*D[i]**2/self.sigma_wm**2)
 
 
 	#some kind of cubic regression in temporal domain, 
@@ -345,7 +249,6 @@ class part_filt:
 		else:
 			tplusone = np.array([((self.frames_passed - 0.5)**i) for i in range(4)])
 		new_u = np.dot(tplusone, self.t_poly_weights[:,0].reshape((4,1)))[0]
-		#print 'u(t+1) = ', new_u
 		return new_u
 
 	def get_new_v(self):
@@ -353,9 +256,7 @@ class part_filt:
 			tplusone = np.array([((self.n_0)**i) for i in range(4)])
 		else:
 			tplusone = np.array([((self.frames_passed - 0.5)**i) for i in range(4)])
-
 		new_v = np.dot(tplusone, self.t_poly_weights[:,1].reshape((4,1)))[0]
-		#print 'v(t+1) = ', new_v
 		return new_v
 
 	def print_vel(self):
@@ -363,4 +264,3 @@ class part_filt:
 		vel_u = self.t_poly_weights[1,0] + 2*self.t_poly_weights[2,0]*t + 3*self.t_poly_weights[3,0]*(t**2)
 		vel_v = self.t_poly_weights[1,1] + 2*self.t_poly_weights[2,1]*t + 3*self.t_poly_weights[3,1]*(t**2)  
 
-		#print 'velocity: (', vel_u, ', ', vel_v, ')'
