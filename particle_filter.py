@@ -74,30 +74,40 @@ class part_filt:
                 #print 'i < n_vel'
 
 
-                ####TRYING TO COMPRESS CODE
+                ####TRYING TO COMPRESS CODE, now need to vectorize calling pzt, instead of inside the forloop.
                 p = [int(round(self.xt_1[i].wt*n_vel,0)) for i in range(n_vel)]
-                delu = lambda x:np.random.normal(u_t_plus_1 - self.mean_best_ten[0], self.sig_d, p[x]) if p[x] else [0]
-                delv = lambda x:np.random.normal(v_t_plus_1 - self.mean_best_ten[1], self.sig_d, p[x]) if p[x] else [0]
+                delu = lambda x:np.random.normal(u_t_plus_1 - self.mean_best_ten[0], self.sig_d, p[x]) if p[x]>0 else [0]
+                delv = lambda x:np.random.normal(v_t_plus_1 - self.mean_best_ten[1], self.sig_d, p[x]) if p[x]>0 else [0]
                 delu2 = lambda x:np.random.normal(u_t_plus_1 - self.mean_best_ten[0], self.sig_d, n_vel - sum(p) +p[x]) if p[x]>0 else [0]
                 delv2 = lambda x:np.random.normal(v_t_plus_1 - self.mean_best_ten[1], self.sig_d, n_vel - sum(p) +p[x]) if p[x]>0 else [0]
 
-                tot_p_nvel = [[particle(self.xt_1[i].u+delu(j)[0],self.xt_1[i].v+delv(j)[0],self.pzt(frame,self.xt_1[i].u+delu(j)[0],self.xt_1[i].v+delv(j)[0])) for j in range(p[i])] if sum(p[:i]) < n_vel else [particle(self.xt_1[i].u+delu2(j)[0],self.xt_1[i].v+delv2(j)[0],self.pzt(frame,self.xt_1[i].u+delu2(j)[0],self.xt_1[i].v+delv2(j)[0])) for j in range(n_vel - sum(p) + p[i])] for i in range(n_vel)]
-                tot_p_nvel = list(chain.from_iterable(tot_p_nvel))
+                u_v = [[[self.xt_1[i].u+delu(j)[0], self.xt_1[i].v+delv(j)[0]] for j in range(p[i])] if sum(p[:i])<=n_vel else [[self.xt_1[i].u+delu2(j)[0], self.xt_1[i].v+delv2(j)[0]] for j in range(n_vel - sum(p) + p[i])] for i in range(n_vel)]
+                u_v = np.asarray(list(chain.from_iterable(u_v)))
+
+                weights = self.pzt(frame, u_v[:,0], u_v[:,1])
+                #tot_p_nvel = [[particle(self.xt_1[i].u+delu(j)[0],self.xt_1[i].v+delv(j)[0],self.pzt(frame,self.xt_1[i].u+delu(j)[0],self.xt_1[i].v+delv(j)[0])) for j in range(p[i])] if sum(p[:i]) < n_vel else [particle(self.xt_1[i].u+delu2(j)[0],self.xt_1[i].v+delv2(j)[0],self.pzt(frame,self.xt_1[i].u+delu2(j)[0],self.xt_1[i].v+delv2(j)[0])) for j in range(n_vel - sum(p) + p[i])] for i in range(n_vel)]
+                tot_p_nvel = [particle(u_v[i][0],u_v[i][1],weights[i]) for i in range(min(sum(p),n_vel))]
 
                 remaining = []
                 if sum(p) < n_vel:
                     delu = np.random.normal(u_t_plus_1 - self.mean_best_ten[0], self.sig_d, n_vel - sum(p))
                     delv = np.random.normal(v_t_plus_1 - self.mean_best_ten[1], self.sig_d, n_vel - sum(p))
-                    remaining = [particle(self.xt_1[i].u +delu[i],self.xt_1[i].v+delv[i], self.pzt(frame, self.xt_1[i].u +delu[i],self.xt_1[i].v +delv[i])) for i in range(n_vel - sum(p))]
+                    u_v = np.asarray([[self.xt_1[i].u+delu[i], self.xt_1[i].v+delv[i]] for i in range(n_vel - sum(p))])
+                    weights = self.pzt(frame, u_v[:,0], u_v[:,1])
+                    remaining = [particle(u_v[i][0],u_v[i][1], weights[i]) for i in range(n_vel - sum(p))]
 
                 ##Without velociy
                 _del = np.random.normal(0, self.sig_d, self.num - n_vel)
-                without_vel = [particle(self.xt_1[i].u +_del[i],self.xt_1[i].v+_del[i], self.pzt(frame, self.xt_1[i].u +_del[i],self.xt_1[i].v +_del[i])) for i in range(self.num - n_vel)]
+                u_v = np.asarray([[self.xt_1[i].u+_del[i], self.xt_1[i].v+_del[i]] for i in range(self.num - n_vel)])
+                weights = self.pzt(frame, u_v[:,0], u_v[:,1])
+                without_vel = [particle(u_v[i][0],u_v[i][1], weights[i]) for i in range(self.num - n_vel)]
                 self.xt = tot_p_nvel + without_vel + remaining 
 
                 wt = sum([self.xt[i].wt for i in range(len(self.xt))])
                 for i in range(len(self.xt)):
-                    self.xt[i].wt /= wt+1e-7
+                    self.xt[i].wt /= wt
+                #for i in range(len(self.xt)):
+                #    print self.xt[i].u,',', self.xt[i].v,',', self.xt[i].wt
 		
 		#Merge sort, to sort particles by weight
 		self.sort_by_weight()
@@ -117,19 +127,29 @@ class part_filt:
 		h,w = frame.shape[:2]
 		start = time.clock()
 		#Boundary Condtitions... :P
+                
+		#if(u<=w-self.m/2 and u >= self.m/2 and v >= self.n/2 and v <= h-self.n/2):
+                img2 = np.asarray([frame[int(round(v[i] - self.n/2,0)): int(round(v[i] + self.n/2,0)), int(round(u[i] - self.m/2,0)): int(round(u[i]+self.m/2,0))] for i in range(u.size)])
+                img2 = img2.reshape((u.size,self.n*self.m))
+                err = self.MSE(img2.T)
+                weight = np.exp(-err/(2*self.sig_mse**2))
+                return weight
+
+                '''
 		#if(u.any()<=w-self.m/2 and u.any() >= self.m/2 and v.any()>= self.n/2 and v.any()<=h-self.n/2):
 		if(u<=w-self.m/2 and u >= self.m/2 and v>= self.n/2 and v<=h-self.n/2):
 			#All these if conditions to make sure we have same sized images to subtract
                         
-			if(self.n%2==0 and self.m%2 == 0):
-				img2 = frame[int(v - self.n/2): int(v + self.n/2), int(u - self.m/2): int(u+self.m/2)]
-			elif(self.n%2==0 and self.m%2 != 0):
-				img2 = frame[int(v - self.n/2): int(v + self.n/2), int(u - self.m/2): int(u+self.m/2 )+ 1]
-			elif(self.n%2!=0 and self.m%2 == 0):
-				img2 = frame[int(v - self.n/2): int(v + self.n/2) +1, int(u - self.m/2): int(u+self.m/2)]
-			else:
-				img2 = frame[int(v - self.n/2): int(v + self.n/2) +1, int(u - self.m/2): int(u+self.m/2) + 1]
+			#if(self.n%2==0 and self.m%2 == 0):
+			#	img2 = frame[int(v - self.n/2): int(v + self.n/2), int(u - self.m/2): int(u+self.m/2)]
+			#elif(self.n%2==0 and self.m%2 != 0):
+			#	img2 = frame[int(v - self.n/2): int(v + self.n/2), int(u - self.m/2): int(u+self.m/2 )+ 1]
+			#elif(self.n%2!=0 and self.m%2 == 0):
+			#	img2 = frame[int(v - self.n/2): int(v + self.n/2) +1, int(u - self.m/2): int(u+self.m/2)]
+			#else:
+			#	img2 = frame[int(v - self.n/2): int(v + self.n/2) +1, int(u - self.m/2): int(u+self.m/2) + 1]
                         
+                        img2 = frame[int(round(v - self.n/2.0,0)):int(round(v+self.n/2.0,0)), int(round(u-self.m/2.0,0)):int(round(u+self.m/2.0))]
                         ##
                         #img2 = frame[int(v):int(v+self.n), int(u):int(u+self.m)]
                         ##
@@ -141,11 +161,13 @@ class part_filt:
 			weight = np.exp(-err/(2*self.sig_mse**2))
                         #weight = err
 			#print 'err wt', err,' ',weight
-			print 'pzt time ', time.clock() - start
+			#print 'pzt time ', time.clock() - start
 
 			return weight
 		else:
 			return 0
+                '''
+
 
 	#Mean Squared Error
         '''
@@ -160,15 +182,15 @@ class part_filt:
                 z = img2 - self.mu_data
                 #This was used before#p = np.dot(self.sub_s, np.dot(self.sub_s.T,z))
 
-                if self.frames_passed >= 1:
-                    p = slb.dgemm(1.0, a=self.sub_s, b=slb.dgemm(1.0 ,a=self.sub_s.T, b=z))
-                else:
-                    p = np.dot(self.sub_s, np.dot(self.sub_s.T,z))
+                #if self.frames_passed >= 1:
+                #    p = slb.dgemm(1.0, a=self.sub_s, b=slb.dgemm(1.0 ,a=self.sub_s.T, b=z))
+                #else:
+                p = np.dot(self.sub_s, np.dot(self.sub_s.T,z))
                 l = (z-p)**2
                 #print 'time mse ', time.clock()-start
                 #m = (l > ((10**2)*np.ones(l.shape))).astype(int)
 		#start = time.clock()
-                err = np.sum((l.astype(float)/(l+(38**2)*3)))
+                err = np.sum((l.astype(float)/(l+(38**2)*3)), axis = 0)
                 return err
 
 	def sort_by_weight(self):
