@@ -68,11 +68,6 @@ class part_filt:
 		self.print_vel()
 		
 		n_vel = int(self.alpha*self.num) #n particles with the velocity
-                #
-                #cv2.imshow('mean best 10 ', frame[int(self.mean_best_ten[1]-self.n/2):int(self.mean_best_ten[1]+self.n/2),int(self.mean_best_ten[0]-self.m/2): int(self.mean_best_ten[0]+self.m/2)])
-                #
-                #print 'i < n_vel'
-
 
                 ####TRYING TO COMPRESS CODE, now need to vectorize calling pzt, instead of inside the forloop.
                 p = [int(round(self.xt_1[i].wt*n_vel,0)) for i in range(n_vel)]
@@ -84,30 +79,32 @@ class part_filt:
                 u_v = [[[self.xt_1[i].u+delu(j)[0], self.xt_1[i].v+delv(j)[0]] for j in range(p[i])] if sum(p[:i])<=n_vel else [[self.xt_1[i].u+delu2(j)[0], self.xt_1[i].v+delv2(j)[0]] for j in range(n_vel - sum(p) + p[i])] for i in range(n_vel)]
                 u_v = np.asarray(list(chain.from_iterable(u_v)))
 
-                weights = self.pzt(frame, u_v[:,0], u_v[:,1])
-                #tot_p_nvel = [[particle(self.xt_1[i].u+delu(j)[0],self.xt_1[i].v+delv(j)[0],self.pzt(frame,self.xt_1[i].u+delu(j)[0],self.xt_1[i].v+delv(j)[0])) for j in range(p[i])] if sum(p[:i]) < n_vel else [particle(self.xt_1[i].u+delu2(j)[0],self.xt_1[i].v+delv2(j)[0],self.pzt(frame,self.xt_1[i].u+delu2(j)[0],self.xt_1[i].v+delv2(j)[0])) for j in range(n_vel - sum(p) + p[i])] for i in range(n_vel)]
-                tot_p_nvel = [particle(u_v[i][0],u_v[i][1],weights[i]) for i in range(min(sum(p),n_vel))]
+                #weights = self.pzt(frame, u_v[:,0], u_v[:,1])
+                #tot_p_nvel = [particle(u_v[i][0],u_v[i][1],weights[i]) for i in range(min(sum(p),n_vel))]
 
                 remaining = []
                 if sum(p) < n_vel:
                     delu = np.random.normal(u_t_plus_1 - self.mean_best_ten[0], self.sig_d, n_vel - sum(p))
                     delv = np.random.normal(v_t_plus_1 - self.mean_best_ten[1], self.sig_d, n_vel - sum(p))
-                    u_v = np.asarray([[self.xt_1[i].u+delu[i], self.xt_1[i].v+delv[i]] for i in range(n_vel - sum(p))])
-                    weights = self.pzt(frame, u_v[:,0], u_v[:,1])
-                    remaining = [particle(u_v[i][0],u_v[i][1], weights[i]) for i in range(n_vel - sum(p))]
+                    u_v = np.concatenate((u_v,np.asarray([[self.xt_1[i].u+delu[i], self.xt_1[i].v+delv[i]] for i in range(n_vel - sum(p))])), axis=0)
+                    #weights = self.pzt(frame, u_v[:,0], u_v[:,1])
+                    #remaining = [particle(u_v[i][0],u_v[i][1], weights[i]) for i in range(n_vel - sum(p))]
 
                 ##Without velociy
                 _del = np.random.normal(0, self.sig_d, self.num - n_vel)
-                u_v = np.asarray([[self.xt_1[i].u+_del[i], self.xt_1[i].v+_del[i]] for i in range(self.num - n_vel)])
+                u_v = np.concatenate((u_v,np.asarray([[self.xt_1[i].u+_del[i], self.xt_1[i].v+_del[i]] for i in range(self.num - n_vel)])), axis = 0)
+                #weights = self.pzt(frame, u_v[:,0], u_v[:,1])
+                #without_vel = [particle(u_v[i][0],u_v[i][1], weights[i]) for i in range(self.num - n_vel)]
+                #self.xt = tot_p_nvel + without_vel + remaining 
+		print 'Finding weights now',time.clock() - start 
                 weights = self.pzt(frame, u_v[:,0], u_v[:,1])
-                without_vel = [particle(u_v[i][0],u_v[i][1], weights[i]) for i in range(self.num - n_vel)]
-                self.xt = tot_p_nvel + without_vel + remaining 
+		print 'Found weights',time.clock() - start 
+                self.xt = [particle(u_v[i][0],u_v[i][1], weights[i]) for i in range(self.num)]
 
                 wt = sum([self.xt[i].wt for i in range(len(self.xt))])
                 for i in range(len(self.xt)):
                     self.xt[i].wt /= wt
-                #for i in range(len(self.xt)):
-                #    print self.xt[i].u,',', self.xt[i].v,',', self.xt[i].wt
+		print 'norm weights',time.clock() - start 
 		
 		#Merge sort, to sort particles by weight
 		self.sort_by_weight()
@@ -118,6 +115,7 @@ class part_filt:
 		#self.weight_mask(frame)
 		#start = time.clock()
 		self.update_temp(frame)
+		print 'Update temp',time.clock() - start 
 		#self.disp_eig()
 		self.frames_passed = self.frames_passed + 1
 		print 'sample function time ',time.clock() - start 
@@ -129,10 +127,11 @@ class part_filt:
 		#Boundary Condtitions... :P
                 
 		#if(u<=w-self.m/2 and u >= self.m/2 and v >= self.n/2 and v <= h-self.n/2):
-                img2 = np.asarray([frame[int(round(v[i] - self.n/2,0)): int(round(v[i] + self.n/2,0)), int(round(u[i] - self.m/2,0)): int(round(u[i]+self.m/2,0))] for i in range(u.size)])
+                img2 = np.asarray([frame[int(round(v[i] - self.n/2.0,0)): int(round(v[i] + self.n/2.0,0)), int(round(u[i] - self.m/2.0,0)): int(round(u[i]+self.m/2.0,0))] for i in range(u.size)])
                 img2 = img2.reshape((u.size,self.n*self.m))
                 err = self.MSE(img2.T)
                 weight = np.exp(-err/(2*self.sig_mse**2))
+		print 'pzt time ', time.clock() - start
                 return weight
 
                 '''
